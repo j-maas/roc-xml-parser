@@ -14,11 +14,11 @@ main =
             parsedResult <- parseFile (Path.fromStr path) |> Task.attempt
             when parsedResult is
                 Ok parsed ->
-                    Stdout.line (parsed |> Inspect.toStr |> takeFirstStr 500)
+                    Stdout.line (parsed |> Inspect.toStr)
 
                 Err (ParsingFailure error) -> Stderr.line "Parsing error: \(error)"
                 Err (ParsingIncomplete rest) -> Stderr.line "Parsing incomplete: \(rest)"
-                Err error -> Stderr.line "Error parsing file: \(Inspect.toStr error |> takeFirstStr 500)"
+                Err error -> Stderr.line "Error parsing file: \(Inspect.toStr error)"
 
         _ -> Stdout.line "Please call me with just the URL to an XML file."
 
@@ -28,11 +28,3 @@ parseFile = \path ->
 
     Xml.parseString result
     |> Task.fromResult
-
-takeFirstStr : Str, U64 -> Str
-takeFirstStr = \s, amount ->
-    s
-    |> Str.toUtf8
-    |> List.takeFirst amount
-    |> Str.fromUtf8
-    |> Result.withDefault "Error decoding UTF-8"
