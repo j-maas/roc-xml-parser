@@ -1,7 +1,7 @@
 interface Xml
     exposes [Xml, XmlDeclaration, XmlVersion, Node, Attribute, parseString]
     imports [
-        parser.Core.{ Parser, const, map, skip, keep, oneOrMore, oneOf, many, between, alt, chompWhile, flatten, lazy },
+        parser.Core.{ Parser, const, map, skip, keep, oneOrMore, oneOf, many, between, alt, chompWhile, flatten, lazy, chompUntil },
         parser.String.{ parseStr, string, Utf8, digits, codeunitSatisfies },
         "test.xml" as testXml : Str,
     ]
@@ -218,10 +218,10 @@ pElement =
                 |> skip (string ">")
                 |> keep (lazy \_ -> pElementContents)
                 |> skip pEndTag
-            oneOf [
-                emptyTag,
-                tagWithContent,
-            ]
+            # Due to https://github.com/lukewilliamboswell/roc-parser/issues/13 we cannot use `oneOf`, since we are using oneOf in `pElementContents`.
+            alt
+                tagWithContent
+                emptyTag
         )
 
 expect
@@ -279,6 +279,36 @@ expect
                     { name: "secondArg", value: "two" },
                 ]
                 [Text "text content"]
+        )
+
+expect
+    # content with CDATA sections to be parsed
+    result = parseStr
+        pElement
+        "<element><![CDATA[<literal />]]></element>"
+
+    result
+    == Ok
+        (
+            Element
+                "element"
+                []
+                [Text "<literal />"]
+        )
+
+expect
+    # CDATA section with partial CDATA section end tag to be parsed
+    result = parseStr
+        pElement
+        "<element><![CDATA[this is ]] not ]> the end]]></element>"
+
+    result
+    == Ok
+        (
+            Element
+                "element"
+                []
+                [Text "this is ]] not ]> the end"]
         )
 
 expect
@@ -401,7 +431,7 @@ pElementAttribute =
 pAttributeValue : U8 -> Parser Utf8 Str
 pAttributeValue = \quote ->
     chompWhile \c -> c != quote
-    |> map (\chomped -> Str.fromUtf8 chomped |> Result.mapErr (\_ -> "Error decoding UTF8"))
+    |> map (\chomped -> strFromUtf8 chomped)
     |> flatten
 # TODO: Implement reference values
 
@@ -409,11 +439,21 @@ pElementContents : Parser Utf8 (List Node)
 pElementContents =
     many
         (
-            # Due to https://github.com/lukewilliamboswell/roc-parser/issues/13 we cannot use `oneOf`.
-            alt
-                pCharacterData
-                pElement
+            oneOf [
+                pCharacterData,
+                pElement,
+                pCdataSection,
+            ]
         )
+
+# See https://www.w3.org/TR/2008/REC-xml-20081126/#NT-ETag
+pEndTag : Parser Utf8 Str
+pEndTag =
+    const (\name -> name)
+    |> skip (string "</")
+    |> keep pName
+    |> skip (many pWhitespace)
+    |> skip (string ">")
 
 # See https://www.w3.org/TR/2008/REC-xml-20081126/#NT-CharData
 pCharacterData : Parser Utf8 Node
@@ -430,14 +470,28 @@ isCharacterData = \c ->
     (c != '<')
     && (c != '&')
 
-# See https://www.w3.org/TR/2008/REC-xml-20081126/#NT-ETag
-pEndTag : Parser Utf8 Str
-pEndTag =
-    const (\name -> name)
-    |> skip (string "</")
-    |> keep pName
-    |> skip (many pWhitespace)
-    |> skip (string ">")
+# See https://www.w3.org/TR/2008/REC-xml-20081126/#NT-CDSect
+pCdataSection : Parser Utf8 Node
+pCdataSection =
+    (
+        const (\text -> text)
+        |> skip (string "<![CDATA[")
+        |> keep pCdataSectionContent
+    )
+    |> map Text
+
+pCdataSectionContent : Parser Utf8 Str
+pCdataSectionContent =
+    const (\first -> \rest -> Str.concat first rest)
+    |> keep (chompUntil ']' |> map strFromUtf8 |> flatten)
+    |> skip (string "]")
+    |> keep
+        (
+            oneOf [
+                string "]>" |> map \_ -> "",
+                lazy \_ -> pCdataSectionContent |> map \rest -> Str.concat "]" rest,
+            ]
+        )
 
 pName : Parser Utf8 Str
 pName =
@@ -464,8 +518,13 @@ isNameChar = \c ->
 
 combineToStr : U8, List U8 -> Result Str Str
 combineToStr = \first, rest ->
-    allCharacters = rest |> List.prepend first
-    Str.fromUtf8 allCharacters
+    rest
+    |> List.prepend first
+    |> strFromUtf8
+
+strFromUtf8 : List U8 -> Result Str Str
+strFromUtf8 = \chars ->
+    Str.fromUtf8 chars
     |> Result.mapErr (\_ -> "Error decoding UTF8")
 
 XmlMisc : List [Comment, ProcessingInstruction]
