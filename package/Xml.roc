@@ -61,7 +61,12 @@ expect
             encoding: Given Utf8Encoding,
         },
         root: Element "root" [] [
-            Element "element" [{ name: "arg", value: "value" }] [],
+            Text "\n    ",
+            Element
+                "element"
+                [{ name: "arg", value: "value" }]
+                [],
+            Text "\n",
         ],
     }
 
@@ -194,8 +199,16 @@ pElement =
     const (\name -> \arguments -> \contents -> Element name arguments contents)
     |> skip (string "<")
     |> keep pName
+    |> keep
+        (
+            many
+                (
+                    const (\attribute -> attribute)
+                    |> skip (many pWhitespace)
+                    |> keep pElementAttribute
+                )
+        )
     |> skip (many pWhitespace)
-    |> keep (many pElementAttribute)
     |> keep
         (
             emptyTag =
@@ -249,24 +262,122 @@ expect
 #         _ -> Bool.false
 
 expect
-    # element with arguments and text content to be parsed
+    # element with multiple arguments and text content to be parsed
     result = parseStr
         pElement
         """
-        <element arg="value">text content</element>
+        <element firstArg="one" secondArg="two">text content</element>
         """
 
-    result == Ok (Element "element" [{ name: "arg", value: "value" }] [Text "text content"])
+    result
+    == Ok
+        (
+            Element
+                "element"
+                [
+                    { name: "firstArg", value: "one" },
+                    { name: "secondArg", value: "two" },
+                ]
+                [Text "text content"]
+        )
 
 expect
-    # element with arguments and text content to be parsed
+    # nested elements to be parsed
+    result = parseStr
+        pElement
+        "<parent><child /></parent>"
+
+    result == Ok (Element "parent" [] [Element "child" [] []])
+
+expect
+    # nested element with arguments to be parsed
     result = parseStr
         pElement
         """
-        <element arg="value">text content</element>
+        <parent argParent="outer"><child argChild="inner" /></parent>
         """
 
-    result == Ok (Element "element" [{ name: "arg", value: "value" }] [Text "text content"])
+    result
+    == Ok
+        (
+            Element
+                "parent"
+                [
+                    { name: "argParent", value: "outer" },
+                ]
+                [
+                    Element
+                        "child"
+                        [
+                            { name: "argChild", value: "inner" },
+                        ]
+                        [],
+                ]
+        )
+
+expect
+    # nested elements with whitespace to be parsed
+    result = parseStr
+        pElement
+        """
+        <parent>
+            <child />
+        </parent>
+        """
+
+    result
+    == Ok
+        (
+            Element
+                "parent"
+                []
+                [
+                    Text "\n    ",
+                    Element "child" [] [],
+                    Text "\n",
+                ]
+        )
+
+expect
+    # element with diverse children to be parsed
+    result = parseStr
+        pElement
+        """
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <title>Atom Feed</title>
+            <link rel="self" type="application/atom+xml" href="http://example.org" />
+            <updated>2024-02-23T20:38:24Z</updated>
+        </feed>
+        """
+
+    result
+    == Ok
+        (
+            Element
+                "feed"
+                [{ name: "xmlns", value: "http://www.w3.org/2005/Atom" }]
+                [
+                    Text "\n    ",
+                    Element "title" [] [Text "Atom Feed"],
+                    Text "\n    ",
+                    Element
+                        "link"
+                        [
+                            { name: "rel", value: "self" },
+                            { name: "type", value: "application/atom+xml" },
+                            { name: "href", value: "http://example.org" },
+                        ]
+                        [],
+                    Text "\n    ",
+                    Element
+                        "updated"
+                        []
+                        [
+                            Text "2024-02-23T20:38:24Z",
+                        ],
+                    Text "\n",
+                ]
+        )
 
 pElementAttribute : Parser Utf8 Attribute
 pElementAttribute =
