@@ -1,0 +1,3 @@
+[submodule "dependencies/roc-parser"]
+	path = dependencies/roc-parser
+	url = git@github.com:lukewilliamboswell/roc-parser.git
