@@ -298,11 +298,10 @@ pElementContents : Parser Utf8 (List Node)
 pElementContents =
     many
         (
-            oneOf [
-                pCharacterData,
-                # TODO: Allow nested elements, currently blocked due to https://github.com/lukewilliamboswell/roc-parser/issues/13
-                # pElement,
-            ]
+            # Due to https://github.com/lukewilliamboswell/roc-parser/issues/13 we cannot use `oneOf`.
+            alt
+                pCharacterData
+                pElement
         )
 
 # See https://www.w3.org/TR/2008/REC-xml-20081126/#NT-CharData
