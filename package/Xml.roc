@@ -50,6 +50,31 @@ parseString = \input ->
         xmlParser
         input
 
+expect
+    # xml to be parsed
+    result = parseString testXml
+
+    result
+    == Ok {
+        xmlDeclaration: Given {
+            version: v1Dot0,
+            encoding: Given Utf8Encoding,
+        },
+        root: Element "root" [] [
+            Element "element" [{ name: "arg", value: "value" }] [],
+        ],
+    }
+
+expect
+    # XML with empty prolog to be parsed
+    result = parseString "<element />"
+
+    result
+    == Ok {
+        xmlDeclaration: Missing,
+        root: Element "element" [] [],
+    }
+
 xmlParser : Parser Utf8 Xml
 xmlParser =
     const
@@ -93,6 +118,20 @@ pXmlDeclaration =
         )
     |> skip (many pWhitespace)
     |> skip (string "?>")
+
+expect
+    # XML declaration to be parsed
+    result = parseStr
+        pXmlDeclaration
+        """
+        <?xml version="1.0" encoding="utf-8"?>
+        """
+
+    result
+    == Ok {
+        version: v1Dot0,
+        encoding: Given Utf8Encoding,
+    }
 
 # See https://www.w3.org/TR/2008/REC-xml-20081126/#NT-VersionInfo
 pVersion : Parser Utf8 XmlVersion
@@ -143,6 +182,12 @@ pEncodingName =
         )
     |> flatten
 
+expect
+    # encoding name to be parsed
+    result = parseStr pEncodingName "utf-8"
+
+    result == Ok Utf8Encoding
+
 # See https://www.w3.org/TR/2008/REC-xml-20081126/#NT-element
 pElement : Parser Utf8 Node
 pElement =
@@ -165,6 +210,63 @@ pElement =
                 tagWithContent,
             ]
         )
+
+expect
+    # empty element tag without arguments to be parsed
+    result = parseStr pElement "<element />"
+
+    result == Ok (Element "element" [] [])
+
+expect
+    # empty element tag without arguments and without whitespace to be parsed
+    result = parseStr pElement "<element/>"
+
+    result == Ok (Element "element" [] [])
+
+expect
+    # empty element tag with argument to be parsed
+    result = parseStr
+        pElement
+        """
+        <element arg="value"/>
+        """
+
+    result == Ok (Element "element" [{ name: "arg", value: "value" }] [])
+
+expect
+    # empty element without arguments to be parsed
+    result = parseStr pElement "<element></element>"
+
+    result == Ok (Element "element" [] [])
+
+# TODO: reject mismatched tags for better debugging
+# expect
+#     # mismatched end tag is rejected
+#     result = parseStr pElement "<open></close>"
+
+#     when result is
+#         Err (ParsingFailure _) -> Bool.true
+#         _ -> Bool.false
+
+expect
+    # element with arguments and text content to be parsed
+    result = parseStr
+        pElement
+        """
+        <element arg="value">text content</element>
+        """
+
+    result == Ok (Element "element" [{ name: "arg", value: "value" }] [Text "text content"])
+
+expect
+    # element with arguments and text content to be parsed
+    result = parseStr
+        pElement
+        """
+        <element arg="value">text content</element>
+        """
+
+    result == Ok (Element "element" [{ name: "arg", value: "value" }] [Text "text content"])
 
 pElementAttribute : Parser Utf8 Attribute
 pElementAttribute =
@@ -307,95 +409,3 @@ isAlphabetical = \c ->
 isDigit : U8 -> Bool
 isDigit = \c ->
     c >= '0' && c <= '9'
-
-#
-# Test cases
-#
-
-expect
-    # xml to be parsed
-    result = parseString testXml
-
-    result
-    == Ok {
-        xmlDeclaration: Given {
-            version: v1Dot0,
-            encoding: Given Utf8Encoding,
-        },
-        root: Element "root" [] [
-            Element "element" [{ name: "arg", value: "value" }] [],
-        ],
-    }
-
-expect
-    # XML with empty prolog to be parsed
-    result = parseString "<element />"
-
-    result
-    == Ok {
-        xmlDeclaration: Missing,
-        root: Element "element" [] [],
-    }
-
-expect
-    # encoding name to be parsed
-    result = parseStr pEncodingName "utf-8"
-
-    result == Ok Utf8Encoding
-
-expect
-    # empty element tag without arguments to be parsed
-    result = parseStr pElement "<element />"
-
-    result == Ok (Element "element" [] [])
-
-expect
-    # empty element tag without arguments and without whitespace to be parsed
-    result = parseStr pElement "<element/>"
-
-    result == Ok (Element "element" [] [])
-
-expect
-    # empty element tag with argument to be parsed
-    result = parseStr
-        pElement
-        """
-        <element arg="value"/>
-        """
-
-    result == Ok (Element "element" [{ name: "arg", value: "value" }] [])
-
-expect
-    # empty element without arguments to be parsed
-    result = parseStr pElement "<element></element>"
-
-    result == Ok (Element "element" [] [])
-
-# TODO: reject mismatched tags for better debugging
-# expect
-#     # mismatched end tag is rejected
-#     result = parseStr pElement "<open></close>"
-
-#     when result is
-#         Err (ParsingFailure _) -> Bool.true
-#         _ -> Bool.false
-
-expect
-    # element with arguments and text content to be parsed
-    result = parseStr
-        pElement
-        """
-        <element arg="value">text content</element>
-        """
-
-    result == Ok (Element "element" [{ name: "arg", value: "value" }] [Text "text content"])
-
-expect
-    # element with arguments and text content to be parsed
-    result = parseStr
-        pElement
-        """
-        <element arg="value">text content</element>
-        """
-
-    result == Ok (Element "element" [{ name: "arg", value: "value" }] [Text "text content"])
