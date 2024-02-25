@@ -19,7 +19,7 @@ This will download the dependencies' code so that you can use them.
 Due to https://github.com/roc-lang/roc/issues/5654, we cannot run the package `roc test package/main.roc`. As a workaround, run the application:
 
 ```
-roc test package/compile.roc
+roc test package/parse.roc
 ```
 
 
