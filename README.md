@@ -22,6 +22,13 @@ Due to https://github.com/roc-lang/roc/issues/5654, we cannot run the package `r
 roc test package/parse.roc
 ```
 
+You can parse arbitrary XML files for testing by running:
+
+```
+roc run package/parse.roc -- <path to your XML file>
+```
+
+It will output an `Inspect` representation of the parsed XML.
 
 ## Maintenance
 
