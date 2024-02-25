@@ -1,4 +1,4 @@
-package "parser"
+package "roc-xml-parser"
     exposes [
         Xml,
     ]
